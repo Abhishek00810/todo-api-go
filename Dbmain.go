@@ -39,7 +39,7 @@ func todoHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		id, err := strconv.Atoi(idStr)
 		if err != nil {
-			http.Error(w, "Put valid URL", http.StatusMethodNotAllowed)
+			http.Error(w, "Invalid Todo ID", http.StatusBadRequest)
 		}
 		switch r.Method {
 		case http.MethodGet:
@@ -114,30 +114,27 @@ func CreateTodo(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func getTodo(w http.ResponseWriter, _ *http.Request, id int) {
-	row, err := db.Query("SELECT * FROM todos where id = ?", id)
+func getTodo(w http.ResponseWriter, r *http.Request, id int) {
+	var t Todo
 
+	// 1. Use QueryRow for a single result. We also specify the columns explicitly.
+	// The .Scan() is chained directly onto the QueryRow call.
+	err := db.QueryRow("SELECT id, task, completed FROM todos WHERE id = ?", id).Scan(&t.ID, &t.Task, &t.Completed)
 	if err != nil {
-		http.Error(w, "Error fetching data", http.StatusInternalServerError)
-	}
-
-	var todo Todo
-	for row.Next() {
-		err = row.Scan(&todo.ID, &todo.Task, &todo.Completed)
-		if err != nil {
-			http.Error(w, "Error while scanning values", http.StatusInternalServerError)
+		// 2. This is the key part: Check if the error is specifically "no rows were found".
+		if err == sql.ErrNoRows {
+			// This is a client error (they asked for an ID that doesn't exist), so we send a 404.
+			http.Error(w, "Todo not found", http.StatusNotFound)
+		} else {
+			// Any other error is a real server problem, so we send a 500.
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
-	}
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return // CRITICAL: Return after handling any error.
 	}
 
+	// 3. If there were no errors, we found the todo. Send the successful response.
 	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(todo)
-	if err != nil {
-		http.Error(w, "Values are not getting turned right", http.StatusInternalServerError)
-	}
-
+	json.NewEncoder(w).Encode(t)
 }
 
 func DeleteTodo(w http.ResponseWriter, r *http.Request, id int) {
