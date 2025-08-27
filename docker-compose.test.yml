@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  # Test Database (Separate instance)
+  db-test:
+    image: postgres:15-alpine
+    container_name: todos-db-test
+    environment:
+      - POSTGRES_USER=${TEST_DB_USER}
+      - POSTGRES_PASSWORD=${TEST_DB_PASSWORD}
+      - POSTGRES_DB=${TEST_DB_NAME}
+    # Use tmpfs for faster tests (data stored in memory)
+    tmpfs:
+      - /var/lib/postgresql/data:rw,noexec,nosuid,size=1024m
+    
+    ports:
+      - "5433:5432"
+    networks:
+      - todos-test-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${TEST_DB_USER} -d ${TEST_DB_NAME}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Test Runner
+  app-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: todos-app-test
+    environment:
+      - TEST_DB_SOURCE=${TEST_DB_SOURCE}
+    depends_on:
+      db-test:
+        condition: service_healthy
+    networks:
+      - todos-test-network
+    # Run tests and exit
+    command: ["go", "test", "-v", "./..."]
+
+networks:
+  todos-test-network:
+    name: todos-test-network
+    driver: bridge

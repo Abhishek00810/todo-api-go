@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  # Development Database
+  db-dev:
+    image: postgres:15-alpine
+    container_name: todos-db-dev
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
+    volumes:
+      - postgres-dev-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - todos-dev-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Development Application
+  app-dev:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: todos-app-dev
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_SOURCE=${DB_SOURCE}
+    depends_on:
+      db-dev:
+        condition: service_healthy
+    networks:
+      - todos-dev-network
+    restart: unless-stopped
+
+volumes:
+  postgres-dev-data:
+    name: todos-postgres-dev-data
+
+networks:
+  todos-dev-network:
+    name: todos-dev-network
+    driver: bridge

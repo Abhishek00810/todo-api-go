@@ -1,31 +1,38 @@
-# Stage 1: The "builder" stage, where we compile our app
-FROM golang:1.22-alpine AS builder
+# Stage 1: The "builder" stage
+# We still use the golang-alpine image
+FROM golang:1.25-alpine AS builder
 
-# Set the Current Working Directory inside the container
+# Set the working directory
 WORKDIR /app
 
-# Copy go mod and sum files first for better caching
-COPY go.mod go.sum ./
+# --- NEW STEP ---
+# Install the C build tools (gcc) needed for the go-sqlite3 driver.
+# 'apk' is Alpine's package manager.
+RUN apk add --no-cache gcc musl-dev
 
-# Download all dependencies
+# Copy and download dependencies (same as before)
+COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy the source code into the container
+# Copy source code (same as before)
 COPY . .
 
-# Build the Go app as a static binary
-RUN CGO_ENABLED=0 GOOS=linux go build -o todo-api .
+# --- MODIFIED STEP ---
+# Build the Go app, but this time KEEP CGO ENABLED.
+# We remove the CGO_ENABLED=0 part.
+RUN GOOS=linux go build -o todo-api .
 
 # ---
 
-# Stage 2: The "final" stage, where we create the lightweight image
+# Stage 2: The "final" stage (this part remains almost the same)
 FROM alpine:latest
 
-# Copy only the compiled binary from the "builder" stage
+# Copy only the compiled binary from the "builder" stage.
+# The binary is still self-contained, even with CGo.
 COPY --from=builder /app/todo-api .
 
-# Document the port that the container listens on
+# Expose the port
 EXPOSE 8080
 
-# This is the command that will run when the container starts
+# Set the command to run
 CMD ["./todo-api"]

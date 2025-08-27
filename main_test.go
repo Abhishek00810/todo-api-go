@@ -13,34 +13,70 @@ import (
 	"testing"
 )
 
-func setupTestDB() {
-	os.Remove("./todos_test.db")
-
-	var err error
-	db, err = sql.Open("sqlite3", "todos_test.db")
-
-	if err != nil {
-		log.Fatalf("Could not connect to testing database, : %v", err)
+func TestMain(m *testing.M) {
+	// 1. SETUP: Connect to a dedicated TEST database.
+	dbSource := os.Getenv("TEST_DB_SOURCE")
+	if dbSource == "" {
+		log.Fatalf("FATAL: TEST_DB_SOURCE environment variable is not set")
 	}
 
-	createTableSQL := `CREATE TABLE IF NOT EXISTS todos(id PRIMARY KEY, task TEXT NOT NULL, completed bool NOT NULL)`
+	log.Printf("Connecting to test database: %s", dbSource)
 
-	_, err = db.Exec(createTableSQL)
-
+	var err error
+	db, err = sql.Open("postgres", dbSource)
 	if err != nil {
+		log.Fatalf("FATAL: Could not connect to test database: %v", err)
+	}
+	if err = db.Ping(); err != nil {
+		log.Fatalf("FATAL: Could not ping test database: %v", err)
+	}
+
+	// 2. RUN TESTS: m.Run() executes all the other Test... functions in the file.
+	exitCode := m.Run()
+
+	// 3. TEARDOWN: Close the database connection after all tests are done.
+	db.Close()
+	os.Exit(exitCode)
+}
+
+// clearTable is a helper function we will call at the beginning of EACH test
+// to ensure the database is in a clean state.
+func clearTable() {
+	// Create the table (if it doesn't exist)
+	createTableSQL := `
+    CREATE TABLE IF NOT EXISTS todos (
+        id SERIAL PRIMARY KEY,
+        task TEXT NOT NULL,
+        completed BOOLEAN NOT NULL
+    );`
+
+	if _, err := db.Exec(createTableSQL); err != nil {
 		log.Fatalf("FATAL: Could not create test table: %v", err)
 	}
 
-	_, err = db.Exec(`INSERT INTO todos (id, task, completed) VALUES (1, 'Test Task 1', false), (2, 'Test Task 2', true)`)
+	// Delete all rows from the table to ensure a clean slate
+	db.Exec("DELETE FROM todos")
+	// Reset the auto-incrementing ID counter
+	db.Exec("ALTER SEQUENCE todos_id_seq RESTART WITH 1")
+}
+
+// setupTestData inserts sample data for tests that expect existing data
+func setupTestData() {
+	// Insert test todos
+	_, err := db.Exec("INSERT INTO todos (task, completed) VALUES ($1, $2)", "Test Task 1", false)
 	if err != nil {
-		log.Fatalf("FATAL: Could not insert the values, %v", err)
+		log.Fatalf("FATAL: Could not insert test data: %v", err)
+	}
+	_, err = db.Exec("INSERT INTO todos (task, completed) VALUES ($1, $2)", "Test Task 2", true)
+	if err != nil {
+		log.Fatalf("FATAL: Could not insert test data: %v", err)
 	}
 }
 
 func TestGetTodos(t *testing.T) {
-	setupTestDB()
-	defer db.Close()
-	defer os.Remove("./todos_test.db")
+	clearTable()
+	setupTestData() // Add this line to insert test data
+
 	var todos []Todo
 
 	req := httptest.NewRequest(http.MethodGet, "/todos", nil)
@@ -64,10 +100,7 @@ func TestGetTodos(t *testing.T) {
 }
 
 func TestCreateTodo(t *testing.T) {
-	setupTestDB()
-
-	defer db.Close()
-	defer os.Remove("./todos_test.db")
+	clearTable()
 
 	testCases := []struct {
 		name               string
@@ -83,7 +116,7 @@ func TestCreateTodo(t *testing.T) {
 		},
 		{
 			name:               "Error - Empty task",
-			inputBody:          []byte(`{"task: "", "completed":false}`),
+			inputBody:          []byte(`{"task": "", "completed": false}`), // Fixed JSON syntax
 			expectedStatusCode: http.StatusBadRequest,
 			expectedTask:       "",
 		},
@@ -121,14 +154,11 @@ func TestCreateTodo(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func TestGetTodo(t *testing.T) {
-	setupTestDB()
-
-	defer db.Close()
-	defer os.Remove("todos_test.db")
+	clearTable()
+	setupTestData() // Add this line to insert test data
 
 	testCases := []struct {
 		name               string
@@ -171,14 +201,11 @@ func TestGetTodo(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func TestDeleteTodo(t *testing.T) {
-	setupTestDB()
-
-	defer db.Close()
-	defer os.Remove("./todos_test.db")
+	clearTable()
+	setupTestData() // Add this line to insert test data
 
 	testCases := []struct {
 		name               string
@@ -218,7 +245,7 @@ func TestDeleteTodo(t *testing.T) {
 				id, _ := strconv.Atoi(idStr)
 
 				var todo Todo
-				err := db.QueryRow("SELECT id FROM todos WHERE id = ?", id).Scan(&todo.ID)
+				err := db.QueryRow("SELECT id FROM todos WHERE id = $1", id).Scan(&todo.ID)
 
 				if err != sql.ErrNoRows {
 					t.Errorf("expected todo with id %d to be deleted, but it still exists", id)
@@ -229,9 +256,8 @@ func TestDeleteTodo(t *testing.T) {
 }
 
 func TestUpdateTodo(t *testing.T) {
-	setupTestDB()
-	defer db.Close()
-	defer os.Remove("./todos_test.db")
+	clearTable()
+	setupTestData() // Add this line to insert test data
 
 	testCases := []struct {
 		name               string
@@ -250,19 +276,19 @@ func TestUpdateTodo(t *testing.T) {
 			expectedCompleted:  true,
 		},
 		{
-			name:               "Error - Empty Task", // Renamed for clarity
+			name:               "Error - Empty Task",
 			path:               "/todos/2",
 			inputBody:          []byte(`{"task": "", "completed": false}`),
 			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
-			name:               "Error - Malformed JSON", // Renamed for clarity
+			name:               "Error - Malformed JSON",
 			path:               "/todos/2",
 			inputBody:          []byte(`{"task": "bad json" "completed": false}`),
 			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
-			name:               "Error - Not Found", // FIX: Renamed for clarity
+			name:               "Error - Not Found",
 			path:               "/todos/99",
 			inputBody:          []byte(`{"task": "doesn't matter", "completed": false}`),
 			expectedStatusCode: http.StatusNotFound,
@@ -288,8 +314,7 @@ func TestUpdateTodo(t *testing.T) {
 				var taskFromDB string
 				var completedFromDB bool
 
-				// FIX: Use Fatalf for a more descriptive error if verification fails.
-				err := db.QueryRow("SELECT task, completed FROM todos WHERE id = ?", id).Scan(&taskFromDB, &completedFromDB)
+				err := db.QueryRow("SELECT task, completed FROM todos WHERE id = $1", id).Scan(&taskFromDB, &completedFromDB)
 				if err != nil {
 					t.Fatalf("Failed to re-fetch from DB for verification: %v", err)
 				}

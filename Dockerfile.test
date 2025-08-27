@@ -1,0 +1,23 @@
+# Use Go official image
+FROM golang:1.25-alpine AS test
+
+# Set working directory
+WORKDIR /app
+
+# Install PostgreSQL client for debugging
+RUN apk add --no-cache postgresql-client
+
+# Copy go mod files
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Install go test dependencies
+RUN go mod tidy
+
+# Default command (can be overridden)
+CMD ["go", "test", "-v", "./..."]

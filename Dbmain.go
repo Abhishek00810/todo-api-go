@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
-	_ "github.com/mattn/go-sqlite3" // The SQLite driver
+	_ "github.com/lib/pq" // The SQLite driver
 )
 
 var db *sql.DB
@@ -33,6 +34,7 @@ func todoHandler(w http.ResponseWriter, r *http.Request) {
 
 		default:
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
 		}
 
 		return
@@ -40,6 +42,7 @@ func todoHandler(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.Atoi(idStr)
 		if err != nil {
 			http.Error(w, "Invalid Todo ID", http.StatusBadRequest)
+			return
 		}
 		switch r.Method {
 		case http.MethodGet:
@@ -97,17 +100,14 @@ func CreateTodo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := db.Exec("INSERT INTO todos (task, completed) VALUES (? , ?)", NewTodo.Task, NewTodo.Completed)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	id, err := res.LastInsertId()
+	var newID int
+	err = db.QueryRow(`INSERT INTO todos (task, completed) VALUES ($1, $2) RETURNING id`, NewTodo.Task, NewTodo.Completed).Scan(&newID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
-	NewTodo.ID = int(id)
+	NewTodo.ID = int(newID)
 	w.Header().Set("Content-type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(NewTodo)
@@ -119,7 +119,7 @@ func getTodo(w http.ResponseWriter, r *http.Request, id int) {
 
 	// 1. Use QueryRow for a single result. We also specify the columns explicitly.
 	// The .Scan() is chained directly onto the QueryRow call.
-	err := db.QueryRow("SELECT id, task, completed FROM todos WHERE id = ?", id).Scan(&t.ID, &t.Task, &t.Completed)
+	err := db.QueryRow("SELECT id, task, completed FROM todos WHERE id = $1", id).Scan(&t.ID, &t.Task, &t.Completed)
 	if err != nil {
 		// 2. This is the key part: Check if the error is specifically "no rows were found".
 		if err == sql.ErrNoRows {
@@ -128,6 +128,7 @@ func getTodo(w http.ResponseWriter, r *http.Request, id int) {
 		} else {
 			// Any other error is a real server problem, so we send a 500.
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
 		return // CRITICAL: Return after handling any error.
 	}
@@ -138,7 +139,7 @@ func getTodo(w http.ResponseWriter, r *http.Request, id int) {
 }
 
 func DeleteTodo(w http.ResponseWriter, r *http.Request, id int) {
-	res, err := db.Exec("DELETE FROM todos where id =?", id)
+	res, err := db.Exec("DELETE FROM todos where id = $1", id)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -166,7 +167,7 @@ func updateTodo(w http.ResponseWriter, r *http.Request, id int) {
 		return
 	}
 	updateTodo.ID = id
-	res, err := db.Exec("UPDATE todos SET task = ?, completed = ? WHERE id = ?", updateTodo.Task, updateTodo.Completed, id)
+	res, err := db.Exec("UPDATE todos SET task = $1, completed = $2 WHERE id = $3", updateTodo.Task, updateTodo.Completed, id)
 
 	if err != nil {
 		http.Error(w, "Not able to update the DB", http.StatusInternalServerError)
@@ -182,52 +183,47 @@ func updateTodo(w http.ResponseWriter, r *http.Request, id int) {
 
 }
 
-func setUpDB() {
+func setUpDB() (*sql.DB, error) {
+	dbSource := os.Getenv("DB_SOURCE")
+	if dbSource == "" {
+		log.Fatal("FATAL: DB_SOURCE environment variable is not set.")
+	}
+
 	var err error
-	db, err = sql.Open("sqlite3", "./todos.db")
+	db, err = sql.Open("postgres", dbSource)
 	if err != nil {
-		log.Fatalf("Fatal: Count not connect to the database: %v", err)
+		return nil, err
 	}
 
+	if err = db.Ping(); err != nil {
+		return nil, err
+	}
+
+	// FIX: Using correct PostgreSQL syntax
 	createTableSQL := `
-	CREATE TABLE IF NOT EXISTS todos(
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			task text NOT NULL,
-			completed BOOLEAN NOT NULL
-		)
-	`
+    CREATE TABLE IF NOT EXISTS todos (
+        id SERIAL PRIMARY KEY,
+        task TEXT NOT NULL,
+        completed BOOLEAN NOT NULL
+    );`
 
-	_, err = db.Exec(createTableSQL)
-
-	if err != nil {
-		log.Fatalf("FATAL: Count not create table %v", err)
+	if _, err = db.Exec(createTableSQL); err != nil {
+		return nil, err
 	}
 
-	log.Println("Database initialized and table created successfully.")
+	log.Println("Database connection successful and table created.")
+	return db, nil
 }
 
 func main() {
 	var err error
 
-	setUpDB()
-	db, err = sql.Open("sqlite3", "./todos.db")
+	db, err = setUpDB()
 	if err != nil {
-		log.Fatalf("Fatal: Count not connect to the database: %v", err)
+		log.Fatalf("FATAL: Could not initialize database: %v", err)
 	}
 
-	createTableSQL := `
-	CREATE TABLE IF NOT EXISTS todos(
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			task text NOT NULL,
-			completed BOOLEAN NOT NULL
-		)
-	`
-
-	_, err = db.Exec(createTableSQL)
-
-	if err != nil {
-		log.Fatalf("FATAL: Count not create table %v", err)
-	}
+	defer db.Close()
 
 	log.Println("Database initialized and table created successfully.")
 
