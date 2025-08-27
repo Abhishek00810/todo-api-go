@@ -1,6 +1,6 @@
 # .gitignore
 
-.env  # Add this line
+.env
 
 .air.toml
 
