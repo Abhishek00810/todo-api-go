@@ -1,14 +1,17 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	_ "github.com/lib/pq" // The SQLite driver
 )
@@ -57,12 +60,23 @@ func todoHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetTodos(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Query("SELECT id, task, completed FROM todos")
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+
+	defer cancel()
+
+	rows, err := db.QueryContext(ctx, "SELECT id, task, completed FROM todos")
 
 	if err != nil {
-		http.Error(w, "Values are not getting fetched by the DB", http.StatusInternalServerError)
+		// If the timeout was exceeded, the error will be context.DeadlineExceeded
+		if errors.Is(err, context.DeadlineExceeded) {
+			http.Error(w, "Request timed out", http.StatusGatewayTimeout)
+		} else {
+			log.Printf("ERROR: Database query failed: %v", err)
+			http.Error(w, "Database error", http.StatusInternalServerError)
+		}
 		return
 	}
+	defer rows.Close()
 
 	var todos []Todo
 
