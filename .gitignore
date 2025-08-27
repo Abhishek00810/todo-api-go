@@ -1,7 +1,0 @@
-# .gitignore
-
-.env  # Add this line
-
-.air.toml
-
-.env.test
