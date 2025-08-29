@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"log"
@@ -11,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/redis/go-redis/v9"
 )
 
 func TestMain(m *testing.M) {
@@ -32,10 +35,28 @@ func TestMain(m *testing.M) {
 	}
 
 	// 2. RUN TESTS: m.Run() executes all the other Test... functions in the file.
-	exitCode := m.Run()
+
+	//REDIS IMPLEMENTATION
+
+	redisAddr := os.Getenv("REDIS_TEST_ADDR")
+	if redisAddr == "" {
+		log.Fatalf("FATAL: count not load redis address")
+	}
+
+	rdb = redis.NewClient(&redis.Options{
+		Addr: redisAddr,
+	})
+
+	if _, err = rdb.Ping(context.Background()).Result(); err != nil {
+		log.Fatalf("FATAL: Could not connect to Redis: %v for %s", err, redisAddr)
+	}
+	log.Println("Redis connection successful.")
 
 	// 3. TEARDOWN: Close the database connection after all tests are done.
+
+	exitCode := m.Run()
 	db.Close()
+	rdb.Close()
 	os.Exit(exitCode)
 }
 

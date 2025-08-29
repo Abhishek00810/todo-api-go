@@ -38,6 +38,7 @@ services:
     container_name: todos-app-test
     environment:
       - TEST_DB_SOURCE=${TEST_DB_SOURCE}
+      - REDIS_ADDR=redis:6379
       - REDIS_TEST_ADDR=redis:6379
     depends_on:
       db-test:
