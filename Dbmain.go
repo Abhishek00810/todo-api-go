@@ -14,9 +14,11 @@ import (
 	"time"
 
 	_ "github.com/lib/pq" // The SQLite driver
+	"github.com/redis/go-redis/v9"
 )
 
 var db *sql.DB
+var rdb *redis.Client // Add this new global variable for the Redis client
 
 type Todo struct {
 	ID        int    `json:"id"`
@@ -102,6 +104,9 @@ func GetTodos(w http.ResponseWriter, r *http.Request) {
 }
 
 func CreateTodo(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+
+	defer cancel()
 	var NewTodo Todo
 	err := json.NewDecoder(r.Body).Decode(&NewTodo)
 	if err != nil {
@@ -115,9 +120,14 @@ func CreateTodo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var newID int
-	err = db.QueryRow(`INSERT INTO todos (task, completed) VALUES ($1, $2) RETURNING id`, NewTodo.Task, NewTodo.Completed).Scan(&newID)
+	err = db.QueryRowContext(ctx, `INSERT INTO todos (task, completed) VALUES ($1, $2) RETURNING id`, NewTodo.Task, NewTodo.Completed).Scan(&newID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+
+		if errors.Is(err, context.DeadlineExceeded) {
+			http.Error(w, "Request timed out", http.StatusGatewayTimeout)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -129,11 +139,35 @@ func CreateTodo(w http.ResponseWriter, r *http.Request) {
 }
 
 func getTodo(w http.ResponseWriter, r *http.Request, id int) {
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	var t Todo
 
+	defer cancel()
 	// 1. Use QueryRow for a single result. We also specify the columns explicitly.
 	// The .Scan() is chained directly onto the QueryRow call.
-	err := db.QueryRow("SELECT id, task, completed FROM todos WHERE id = $1", id).Scan(&t.ID, &t.Task, &t.Completed)
+
+	cacheKey := fmt.Sprintf("Todo: %d", id)
+
+	val, err := rdb.Get(ctx, cacheKey).Result()
+
+	if err == nil {
+		log.Println("CACHE HIT for key:", cacheKey) // this is the most important line when it comes if the cache is available
+
+		err := json.Unmarshal([]byte(val), &t)
+		if err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(t)
+			return
+		}
+	}
+
+	//otherwise we will move into this piece of code
+
+	log.Printf("Cache missing for %d", id)
+
+	err = db.QueryRowContext(ctx, "SELECT id, task, completed FROM todos WHERE id = $1", id).Scan(&t.ID, &t.Task, &t.Completed)
+
+	//set the key as example: id:45
 	if err != nil {
 		// 2. This is the key part: Check if the error is specifically "no rows were found".
 		if err == sql.ErrNoRows {
@@ -147,13 +181,29 @@ func getTodo(w http.ResponseWriter, r *http.Request, id int) {
 		return // CRITICAL: Return after handling any error.
 	}
 
+	//BEFORE SENDING THE DATA WE WILL SAVE THIS INTO CACHE
+
+	cacheData, err := json.Marshal(t)
+
+	if err != nil {
+		log.Printf("Not able to save the cache as marshalling failed")
+	} else {
+		err = rdb.Set(ctx, cacheKey, cacheData, 5*time.Minute).Err()
+		if err != nil {
+			log.Printf("ERROR: Failed to set the cache.")
+		}
+	}
+
 	// 3. If there were no errors, we found the todo. Send the successful response.
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(t)
 }
 
 func DeleteTodo(w http.ResponseWriter, r *http.Request, id int) {
-	res, err := db.Exec("DELETE FROM todos where id = $1", id)
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+
+	defer cancel()
+	res, err := db.ExecContext(ctx, "DELETE FROM todos where id = $1", id)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -170,6 +220,9 @@ func DeleteTodo(w http.ResponseWriter, r *http.Request, id int) {
 }
 
 func updateTodo(w http.ResponseWriter, r *http.Request, id int) {
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+
+	defer cancel()
 	var updateTodo Todo
 	err := json.NewDecoder(r.Body).Decode(&updateTodo)
 	if err != nil {
@@ -181,7 +234,7 @@ func updateTodo(w http.ResponseWriter, r *http.Request, id int) {
 		return
 	}
 	updateTodo.ID = id
-	res, err := db.Exec("UPDATE todos SET task = $1, completed = $2 WHERE id = $3", updateTodo.Task, updateTodo.Completed, id)
+	res, err := db.ExecContext(ctx, "UPDATE todos SET task = $1, completed = $2 WHERE id = $3", updateTodo.Task, updateTodo.Completed, id)
 
 	if err != nil {
 		http.Error(w, "Not able to update the DB", http.StatusInternalServerError)
@@ -226,6 +279,22 @@ func setUpDB() (*sql.DB, error) {
 	}
 
 	log.Println("Database connection successful and table created.")
+
+	//REDIS IMPLEMENTATION
+	redisAddr := os.Getenv("REDIS_ADDR")
+
+	if redisAddr == "" {
+		log.Fatalf("FATAL: count not load redis address")
+	}
+	rdb = redis.NewClient(&redis.Options{
+		Addr: redisAddr, // The address from our docker-compose.yml
+	})
+
+	if _, err = rdb.Ping(context.Background()).Result(); err != nil {
+		log.Fatalf("FATAL: Could not connect to Redis: %v for %s", err, redisAddr)
+	}
+	log.Println("Redis connection successful.")
+
 	return db, nil
 }
 

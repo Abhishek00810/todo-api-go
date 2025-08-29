@@ -9,6 +9,7 @@ services:
       - POSTGRES_USER=${DB_USER}
       - POSTGRES_PASSWORD=${DB_PASSWORD}
       - POSTGRES_DB=${DB_NAME}
+      
     volumes:
       - postgres-dev-data:/var/lib/postgresql/data
     ports:
@@ -20,6 +21,13 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+  redis:
+    image: redis:7-alpine # Use the official, lightweight Redis image.
+    ports:
+       - "6379:6379" # Map the default Redis port for debugging.
+    networks:
+       - todos-dev-network
+
 
   # Development Application
   app-dev:
@@ -31,9 +39,12 @@ services:
       - "8080:8080"
     environment:
       - DB_SOURCE=${DB_SOURCE}
+      - REDIS_ADDR=redis:6379
     depends_on:
       db-dev:
         condition: service_healthy
+      redis:
+        condition: service_started
     networks:
       - todos-dev-network
     restart: unless-stopped
