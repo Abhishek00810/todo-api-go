@@ -216,6 +216,15 @@ func DeleteTodo(w http.ResponseWriter, r *http.Request, id int) {
 		return
 	}
 
+	cacheKey := fmt.Sprintf("Todo: %d", id)
+	err = rdb.Del(ctx, cacheKey).Err()
+
+	if err != nil {
+		log.Printf("WARN: Failed to delete the cache key, %s,  %v", cacheKey, err)
+	} else {
+		log.Printf("successfully delete the cache key")
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -245,6 +254,18 @@ func updateTodo(w http.ResponseWriter, r *http.Request, id int) {
 		http.Error(w, "Todo not found", http.StatusNotFound)
 		return
 	}
+
+	//after updating successfully and SENDING RESPONSE REQUEST WE WILL USE SETUP CACHE TO DELETE THE EXISTING K-V PAIR
+
+	cacheKey := fmt.Sprintf("Todo: %d", id)
+	err = rdb.Del(ctx, cacheKey).Err()
+
+	if err != nil {
+		log.Printf("WARN: Failed to delete the cache key, %s,  %v", cacheKey, err)
+	} else {
+		log.Printf("successfully delete the cache key")
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(updateTodo)
 

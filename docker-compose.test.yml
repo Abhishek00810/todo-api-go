@@ -23,6 +23,13 @@ services:
       timeout: 3s
       retries: 5
 
+  redis:
+    image: redis:7-alpine # Use the official, lightweight Redis image.
+    ports:
+       - "6379:6379" # Map the default Redis port for debugging.
+    networks:
+       - todos-test-network
+
   # Test Runner
   app-test:
     build:
@@ -31,6 +38,7 @@ services:
     container_name: todos-app-test
     environment:
       - TEST_DB_SOURCE=${TEST_DB_SOURCE}
+      - REDIS_TEST_ADDR=redis:6379
     depends_on:
       db-test:
         condition: service_healthy
