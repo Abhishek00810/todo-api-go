@@ -13,17 +13,81 @@ import (
 	"strings"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	_ "github.com/lib/pq" // The SQLite driver
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var db *sql.DB
 var rdb *redis.Client // Add this new global variable for the Redis client
 
+var jwtKey []byte
+
+type User struct {
+	ID           int    `json:"id"`
+	Username     string `json:"username"`
+	PasswordHash string `json:"-"`
+}
 type Todo struct {
 	ID        int    `json:"id"`
 	Task      string `json:"task"`
 	Completed bool   `json:"completed"`
+}
+
+type Claims struct {
+	UserID int `json:"user_id"`
+	jwt.RegisteredClaims
+}
+
+func registerHandler(w http.ResponseWriter, r *http.Request) {
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+
+	defer cancel()
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var creds struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+
+	err := json.NewDecoder(r.Body).Decode(&creds)
+
+	if err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if creds.Password == "" || creds.Username == "" {
+		http.Error(w, "Username and Passwrod are mandatory", http.StatusBadRequest)
+	}
+
+	hashPassword, err := bcrypt.GenerateFromPassword([]byte(creds.Password), bcrypt.DefaultCost)
+
+	if err != nil {
+		http.Error(w, "Failed to encrypt the password", http.StatusInternalServerError)
+		return
+	}
+
+	var newUserId int
+	sqlStatement := `INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING ID`
+
+	err = db.QueryRowContext(ctx, sqlStatement, creds.Username, string(hashPassword)).Scan(&newUserId)
+
+	if err != nil {
+		// This could be a real DB error, or a "username already exists" error
+		http.Error(w, "Failed to create user", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+
+	fmt.Fprintf(w, "user created successfully with ID: %d", newUserId)
+
 }
 
 func todoHandler(w http.ResponseWriter, r *http.Request) {
@@ -288,12 +352,21 @@ func setUpDB() (*sql.DB, error) {
 	}
 
 	// FIX: Using correct PostgreSQL syntax
+	// In your initDB() function in main.go
 	createTableSQL := `
-    CREATE TABLE IF NOT EXISTS todos (
-        id SERIAL PRIMARY KEY,
-        task TEXT NOT NULL,
-        completed BOOLEAN NOT NULL
-    );`
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS todos (
+    id SERIAL PRIMARY KEY,
+    task TEXT NOT NULL,
+    completed BOOLEAN NOT NULL,
+    user_id INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);`
 
 	if _, err = db.Exec(createTableSQL); err != nil {
 		return nil, err
@@ -319,8 +392,79 @@ func setUpDB() (*sql.DB, error) {
 	return db, nil
 }
 
+func loginHandler(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+
+	defer cancel()
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var creds struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+
+	err := json.NewDecoder(r.Body).Decode(&creds)
+	if err != nil {
+		http.Error(w, "Invalid body", http.StatusBadRequest)
+		return
+	}
+
+	//fetch the user from the database
+
+	var user User
+	sqlStatement := "SELECT id, password_hash FROM users WHERE username = $1"
+	err = db.QueryRowContext(ctx, sqlStatement, creds.Username).Scan(&user.ID, &user.PasswordHash)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// If the user doesn't exist, return an unauthorized error
+			http.Error(w, "Invalid username or password", http.StatusUnauthorized)
+		} else {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(creds.Password))
+
+	if err != nil {
+		http.Error(w, "Invalid username and password", http.StatusUnauthorized)
+		return
+	}
+
+	expirationTime := time.Now().Add(15 * time.Minute)
+	claims := &Claims{
+		UserID: user.ID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expirationTime),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString(jwtKey)
+
+	if err != nil {
+		http.Error(w, "Failed to create token: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"token": tokenString})
+
+}
+
 func main() {
 	var err error
+
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		log.Fatal("JWT_SECRET not set in environment")
+	}
+	jwtKey = []byte(secret)
 
 	db, err = setUpDB()
 	if err != nil {
@@ -332,6 +476,10 @@ func main() {
 	log.Println("Database initialized and table created successfully.")
 
 	http.HandleFunc("/todos/", todoHandler)
+
+	http.HandleFunc("/register", registerHandler)
+
+	http.HandleFunc("/login", loginHandler)
 
 	fmt.Println("Server listening to port 8080")
 
