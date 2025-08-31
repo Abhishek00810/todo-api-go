@@ -132,11 +132,20 @@ func todoHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetTodos(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(userKey)
+	if userID == nil {
+		http.Error(w, "User not found in context", http.StatusUnauthorized)
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 
 	defer cancel()
 
-	rows, err := db.QueryContext(ctx, "SELECT id, task, completed FROM todos")
+	rows, err := db.QueryContext(
+		ctx,
+		"SELECT id, task, completed FROM todos WHERE user_id = $1",
+		userID,
+	)
 
 	if err != nil {
 		// If the timeout was exceeded, the error will be context.DeadlineExceeded
@@ -174,7 +183,13 @@ func GetTodos(w http.ResponseWriter, r *http.Request) {
 }
 
 func CreateTodo(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(userKey)
+	if userID == nil {
+		http.Error(w, "User not found in context", http.StatusUnauthorized)
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	log.Println("UserKey has been there: ", userID)
 
 	defer cancel()
 	var NewTodo Todo
@@ -190,13 +205,12 @@ func CreateTodo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var newID int
-	err = db.QueryRowContext(ctx, `INSERT INTO todos (task, completed) VALUES ($1, $2) RETURNING id`, NewTodo.Task, NewTodo.Completed).Scan(&newID)
+	err = db.QueryRowContext(ctx, `INSERT INTO todos (task, completed, user_id) VALUES ($1, $2, $3) RETURNING id`, NewTodo.Task, NewTodo.Completed, userID).Scan(&newID)
 	if err != nil {
-
 		if errors.Is(err, context.DeadlineExceeded) {
 			http.Error(w, "Request timed out", http.StatusGatewayTimeout)
 		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			http.Error(w, "invalid query: "+err.Error(), http.StatusInternalServerError)
 		}
 		return
 	}
@@ -209,6 +223,11 @@ func CreateTodo(w http.ResponseWriter, r *http.Request) {
 }
 
 func getTodo(w http.ResponseWriter, r *http.Request, id int) {
+	userID := r.Context().Value(userKey)
+	if userID == nil {
+		http.Error(w, "User not found in context", http.StatusUnauthorized)
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	var t Todo
 
@@ -235,7 +254,7 @@ func getTodo(w http.ResponseWriter, r *http.Request, id int) {
 
 	log.Printf("Cache missing for %d", id)
 
-	err = db.QueryRowContext(ctx, "SELECT id, task, completed FROM todos WHERE id = $1", id).Scan(&t.ID, &t.Task, &t.Completed)
+	err = db.QueryRowContext(ctx, "SELECT id, task, completed FROM todos WHERE id = $1 and user_id = $2", id, userID).Scan(&t.ID, &t.Task, &t.Completed)
 
 	//set the key as example: id:45
 	if err != nil {
@@ -270,10 +289,15 @@ func getTodo(w http.ResponseWriter, r *http.Request, id int) {
 }
 
 func DeleteTodo(w http.ResponseWriter, r *http.Request, id int) {
+	userID := r.Context().Value(userKey)
+	if userID == nil {
+		http.Error(w, "User not found in context", http.StatusUnauthorized)
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 
 	defer cancel()
-	res, err := db.ExecContext(ctx, "DELETE FROM todos where id = $1", id)
+	res, err := db.ExecContext(ctx, "DELETE FROM todos where id = $1 and user_id = $2", id, userID)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -299,6 +323,11 @@ func DeleteTodo(w http.ResponseWriter, r *http.Request, id int) {
 }
 
 func updateTodo(w http.ResponseWriter, r *http.Request, id int) {
+	userID := r.Context().Value(userKey)
+	if userID == nil {
+		http.Error(w, "User not found in context", http.StatusUnauthorized)
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 
 	defer cancel()
@@ -313,7 +342,7 @@ func updateTodo(w http.ResponseWriter, r *http.Request, id int) {
 		return
 	}
 	updateTodo.ID = id
-	res, err := db.ExecContext(ctx, "UPDATE todos SET task = $1, completed = $2 WHERE id = $3", updateTodo.Task, updateTodo.Completed, id)
+	res, err := db.ExecContext(ctx, "UPDATE todos SET task = $1, completed = $2 WHERE id = $3 and user_id = $4", updateTodo.Task, updateTodo.Completed, id, userID)
 
 	if err != nil {
 		http.Error(w, "Not able to update the DB", http.StatusInternalServerError)
@@ -534,3 +563,5 @@ func main() {
 	}
 
 }
+
+//Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjozLCJleHAiOjE3NTY2NDM3OTB9.p7UMgeZqP8uXBwXF6xamcum9cLBmvD-SDoE6Y-Nfiag
