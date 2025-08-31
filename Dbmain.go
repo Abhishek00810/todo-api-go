@@ -24,11 +24,17 @@ var rdb *redis.Client // Add this new global variable for the Redis client
 
 var jwtKey []byte
 
+type contextKey string
+
+// We create a constant of our new type to use as the key.
+const userKey contextKey = "userID"
+
 type User struct {
 	ID           int    `json:"id"`
 	Username     string `json:"username"`
 	PasswordHash string `json:"-"`
 }
+
 type Todo struct {
 	ID        int    `json:"id"`
 	Task      string `json:"task"`
@@ -457,6 +463,44 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		authHandler := r.Header.Get("Authorization")
+		if authHandler == "" {
+			http.Error(w, "Authorization header required", http.StatusUnauthorized)
+			return
+		}
+
+		tokenString := strings.TrimPrefix(authHandler, "Bearer ")
+
+		if tokenString == authHandler {
+			//not valid token parsing
+			http.Error(w, "Invalid token body", http.StatusUnauthorized)
+			return
+		}
+
+		// now to validate
+		claims := &Claims{}
+		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+			return jwtKey, nil
+		})
+
+		if err != nil {
+			http.Error(w, "Unauthorized: "+err.Error(), http.StatusUnauthorized)
+			return
+		}
+
+		if !token.Valid {
+			http.Error(w, "invalid token", http.StatusUnauthorized)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), userKey, claims.UserID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+
+	}
+}
+
 func main() {
 	var err error
 
@@ -475,7 +519,7 @@ func main() {
 
 	log.Println("Database initialized and table created successfully.")
 
-	http.HandleFunc("/todos/", todoHandler)
+	http.HandleFunc("/todos/", authMiddleware(todoHandler))
 
 	http.HandleFunc("/register", registerHandler)
 
