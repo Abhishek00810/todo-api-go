@@ -1,21 +1,8 @@
-package main
+package api
 
 import (
-	"database/sql"
-
-	"github.com/golang-jwt/jwt/v4"
-	"github.com/redis/go-redis/v9"
+	"github.com/golang-jwt/jwt/v5"
 )
-
-var db *sql.DB
-var rdb *redis.Client // Add this new global variable for the Redis client
-
-var jwtKey []byte
-
-type contextKey string
-
-// We create a constant of our new type to use as the key.
-const userKey contextKey = "userID"
 
 type User struct {
 	ID           int    `json:"id"`

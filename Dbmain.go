@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"todo-api-v1/api"
 
 	"github.com/golang-jwt/jwt/v5"
 	_ "github.com/lib/pq" // The SQLite driver
@@ -28,23 +29,6 @@ type contextKey string
 
 // We create a constant of our new type to use as the key.
 const userKey contextKey = "userID"
-
-type User struct {
-	ID           int    `json:"id"`
-	Username     string `json:"username"`
-	PasswordHash string `json:"-"`
-}
-
-type Todo struct {
-	ID        int    `json:"id"`
-	Task      string `json:"task"`
-	Completed bool   `json:"completed"`
-}
-
-type Claims struct {
-	UserID int `json:"user_id"`
-	jwt.RegisteredClaims
-}
 
 func registerHandler(w http.ResponseWriter, r *http.Request) {
 
@@ -159,10 +143,10 @@ func GetTodos(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var todos []Todo
+	var todos []api.Todo
 
 	for rows.Next() {
-		var t Todo
+		var t api.Todo
 		err = rows.Scan(&t.ID, &t.Task, &t.Completed)
 		if err != nil {
 			http.Error(w, "Error while scanning values", http.StatusInternalServerError)
@@ -192,7 +176,7 @@ func CreateTodo(w http.ResponseWriter, r *http.Request) {
 	log.Println("UserKey has been there: ", userID)
 
 	defer cancel()
-	var NewTodo Todo
+	var NewTodo api.Todo
 	err := json.NewDecoder(r.Body).Decode(&NewTodo)
 	if err != nil {
 		http.Error(w, "Values are not following rules", http.StatusBadRequest)
@@ -229,7 +213,7 @@ func getTodo(w http.ResponseWriter, r *http.Request, id int) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
-	var t Todo
+	var t api.Todo
 
 	defer cancel()
 	// 1. Use QueryRow for a single result. We also specify the columns explicitly.
@@ -331,7 +315,7 @@ func updateTodo(w http.ResponseWriter, r *http.Request, id int) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 
 	defer cancel()
-	var updateTodo Todo
+	var updateTodo api.Todo
 	err := json.NewDecoder(r.Body).Decode(&updateTodo)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -450,7 +434,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 
 	//fetch the user from the database
 
-	var user User
+	var user api.User
 	sqlStatement := "SELECT id, password_hash FROM users WHERE username = $1"
 	err = db.QueryRowContext(ctx, sqlStatement, creds.Username).Scan(&user.ID, &user.PasswordHash)
 
@@ -472,7 +456,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	expirationTime := time.Now().Add(15 * time.Minute)
-	claims := &Claims{
+	claims := &api.Claims{
 		UserID: user.ID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expirationTime),
@@ -509,7 +493,7 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		// now to validate
-		claims := &Claims{}
+		claims := &api.Claims{}
 		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
 			return jwtKey, nil
 		})
