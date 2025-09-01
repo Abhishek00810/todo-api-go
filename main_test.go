@@ -13,8 +13,10 @@ import (
 	"strings"
 	"testing"
 	"todo-api-v1/api"
+	"todo-api-v1/store"
 
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestMain(m *testing.M) {
@@ -55,22 +57,29 @@ func TestMain(m *testing.M) {
 
 	// 3. TEARDOWN: Close the database connection after all tests are done.
 
+	store.DB = db
 	exitCode := m.Run()
 	db.Close()
 	rdb.Close()
 	os.Exit(exitCode)
 }
 
-// clearTable is a helper function we will call at the beginning of EACH test
-// to ensure the database is in a clean state.
 func clearTable() {
 	// Create the table (if it doesn't exist)
 	createTableSQL := `
-    CREATE TABLE IF NOT EXISTS todos (
-        id SERIAL PRIMARY KEY,
-        task TEXT NOT NULL,
-        completed BOOLEAN NOT NULL
-    );`
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS todos (
+    id SERIAL PRIMARY KEY,
+    task TEXT NOT NULL,
+    completed BOOLEAN NOT NULL,
+    user_id INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);`
 
 	if _, err := db.Exec(createTableSQL); err != nil {
 		log.Fatalf("FATAL: Could not create test table: %v", err)
@@ -80,16 +89,27 @@ func clearTable() {
 	db.Exec("DELETE FROM todos")
 	// Reset the auto-incrementing ID counter
 	db.Exec("ALTER SEQUENCE todos_id_seq RESTART WITH 1")
+
+	db.Exec("DELETE FROM users")
+
+	db.Exec("ALTER SEQUENCE users_id_seq RESTART WITH 1")
 }
 
 // setupTestData inserts sample data for tests that expect existing data
 func setupTestData() {
 	// Insert test todos
-	_, err := db.Exec("INSERT INTO todos (task, completed) VALUES ($1, $2)", "Test Task 1", false)
+
+	// Step 1: Create a test user with id = 123
+	_, err := db.Exec("INSERT INTO users (id, username, password_hash) VALUES ($1, $2, $3)",
+		123, "testuser", "fake-hash")
+	if err != nil {
+		log.Fatalf("FATAL: Could not insert test user: %v", err)
+	}
+	_, err = db.Exec("INSERT INTO todos (task, completed, user_id) VALUES ($1, $2, $3)", "Test Task 1", false, 123)
 	if err != nil {
 		log.Fatalf("FATAL: Could not insert test data: %v", err)
 	}
-	_, err = db.Exec("INSERT INTO todos (task, completed) VALUES ($1, $2)", "Test Task 2", true)
+	_, err = db.Exec("INSERT INTO todos (task, completed, user_id) VALUES ($1, $2, $3)", "Test Task 2", true, 123)
 	if err != nil {
 		log.Fatalf("FATAL: Could not insert test data: %v", err)
 	}
@@ -103,6 +123,8 @@ func TestGetTodos(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/todos", nil)
 	rr := httptest.NewRecorder()
+	ctx := context.WithValue(req.Context(), userKey, 123)
+	req = req.WithContext(ctx)
 
 	GetTodos(rr, req)
 
@@ -124,6 +146,7 @@ func TestGetTodos(t *testing.T) {
 func TestCreateTodo(t *testing.T) {
 	clearTable()
 
+	setupTestData()
 	testCases := []struct {
 		name               string
 		inputBody          []byte
@@ -154,6 +177,8 @@ func TestCreateTodo(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/todos", bytes.NewReader(tc.inputBody))
 			req.Header.Set("Content-Type", "application/json")
+			ctx := context.WithValue(req.Context(), userKey, 123)
+			req = req.WithContext(ctx)
 			rr := httptest.NewRecorder()
 
 			CreateTodo(rr, req)
@@ -210,9 +235,12 @@ func TestGetTodo(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+
 			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
 			rr := httptest.NewRecorder()
 
+			ctx := context.WithValue(req.Context(), userKey, 123)
+			req = req.WithContext(ctx)
 			todoHandler(rr, req)
 
 			if rr.Code != tc.expectedStatusCode {
@@ -255,7 +283,8 @@ func TestDeleteTodo(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodDelete, tc.path, nil)
 			rr := httptest.NewRecorder()
-
+			ctx := context.WithValue(req.Context(), userKey, 123)
+			req = req.WithContext(ctx)
 			todoHandler(rr, req)
 
 			if rr.Code != tc.expectedStatusCode {
@@ -322,7 +351,8 @@ func TestUpdateTodo(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPut, tc.path, bytes.NewReader(tc.inputBody))
 			req.Header.Set("Content-Type", "application/json")
 			rr := httptest.NewRecorder()
-
+			ctx := context.WithValue(req.Context(), userKey, 123)
+			req = req.WithContext(ctx)
 			todoHandler(rr, req)
 
 			if rr.Code != tc.expectedStatusCode {
@@ -350,4 +380,81 @@ func TestUpdateTodo(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRegister(t *testing.T) {
+	clearTable()
+	setupTestData()
+
+	testCases := []struct {
+		name               string
+		inputBody          []byte
+		expectedStatusCode int
+	}{
+		{
+			name:               "success - Created",
+			inputBody:          []byte(`{"username": "abhishek", "password": "abhi@123"}`),
+			expectedStatusCode: http.StatusCreated,
+		},
+		{
+			name:               "Failed: Bad Request",
+			inputBody:          []byte(`{"username": "", "password": "a21332432"}`),
+			expectedStatusCode: http.StatusBadRequest,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/register", bytes.NewReader(tc.inputBody))
+			rr := httptest.NewRecorder()
+
+			registerHandler(rr, req)
+			if rr.Code != tc.expectedStatusCode {
+				t.Errorf("expected status: %d got : %d", tc.expectedStatusCode, rr.Code)
+			}
+
+			// Verification: Check if the user is actually in the database
+			var userCount int
+			db.QueryRow("SELECT COUNT(*) FROM users WHERE username = 'abhishek'").Scan(&userCount)
+			if userCount != 1 {
+				t.Errorf("expected user to be created in DB, but count is %d", userCount)
+			}
+		})
+	}
+
+}
+
+func TestLogin(t *testing.T) {
+	clearTable()
+	setupTestData()
+	// Seed the database with a known user
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
+	_, err := db.Exec("INSERT INTO users (username, password_hash) VALUES ($1, $2)", "theabhishek", string(hashedPassword))
+	if err != nil {
+		t.Fatalf("Failed to seed user for login test: %v", err)
+	}
+
+	t.Run("Success - Login", func(t *testing.T) {
+		body := []byte(`{"username": "theabhishek", "password": "password123"}`)
+		req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewReader(body))
+		rr := httptest.NewRecorder()
+
+		loginHandler(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected status 200 OK; got %d", rr.Code)
+		}
+
+		// Verification: Check if the response body contains a valid token
+		var response map[string]string
+		json.NewDecoder(rr.Body).Decode(&response)
+		tokenString, ok := response["token"]
+		if !ok {
+			t.Fatal("response did not contain a token")
+		}
+		if len(tokenString) < 20 {
+			t.Errorf("token seems too short: %s", tokenString)
+		}
+	})
+	// You could add more sub-tests for wrong password, user not found, etc.
 }

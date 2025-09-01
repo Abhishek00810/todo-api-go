@@ -32,43 +32,39 @@ type contextKey string
 const userKey contextKey = "userID"
 
 func registerHandler(w http.ResponseWriter, r *http.Request) {
-
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
-
 	defer cancel()
 
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
 	var creds struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
 
 	err := json.NewDecoder(r.Body).Decode(&creds)
-
 	if err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
 	if creds.Password == "" || creds.Username == "" {
-		http.Error(w, "Username and Passwrod are mandatory", http.StatusBadRequest)
+		http.Error(w, "Username and Password are mandatory", http.StatusBadRequest)
+		return
 	}
 
+	// Password hashing stays in handler (business logic)
 	hashPassword, err := bcrypt.GenerateFromPassword([]byte(creds.Password), bcrypt.DefaultCost)
-
 	if err != nil {
 		http.Error(w, "Failed to encrypt the password", http.StatusInternalServerError)
 		return
 	}
 
-	var newUserId int
-	sqlStatement := `INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING ID`
-
-	err = db.QueryRowContext(ctx, sqlStatement, creds.Username, string(hashPassword)).Scan(&newUserId)
-
+	// Call store function
+	newUserID, err := store.CreateUser(ctx, creds.Username, string(hashPassword))
 	if err != nil {
 		// This could be a real DB error, or a "username already exists" error
 		http.Error(w, "Failed to create user", http.StatusInternalServerError)
@@ -76,9 +72,7 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusCreated)
-
-	fmt.Fprintf(w, "user created successfully with ID: %d", newUserId)
-
+	fmt.Fprintf(w, "user created successfully with ID: %d", newUserID)
 }
 
 func todoHandler(w http.ResponseWriter, r *http.Request) {
@@ -96,7 +90,6 @@ func todoHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-
 		return
 	} else {
 		id, err := strconv.Atoi(idStr)
@@ -214,8 +207,9 @@ func getTodo(w http.ResponseWriter, r *http.Request, id int) {
 
 	log.Printf("Cache missing for %d", id)
 
-	err = db.QueryRowContext(ctx, "SELECT id, task, completed FROM todos WHERE id = $1 and user_id = $2", id, userID).Scan(&t.ID, &t.Task, &t.Completed)
+	//err = db.QueryRowContext(ctx, "SELECT id, task, completed FROM todos WHERE id = $1 and user_id = $2", id, userID).Scan(&t.ID, &t.Task, &t.Completed)
 
+	t, err = store.GetUserTodo(ctx, userID, id)
 	//set the key as example: id:45
 	if err != nil {
 		// 2. This is the key part: Check if the error is specifically "no rows were found".
@@ -257,14 +251,14 @@ func DeleteTodo(w http.ResponseWriter, r *http.Request, id int) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 
 	defer cancel()
-	res, err := db.ExecContext(ctx, "DELETE FROM todos where id = $1 and user_id = $2", id, userID)
+	res, err := store.DeleteUserTodo(ctx, id, userID)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	rowsAffected, _ := res.RowsAffected()
+	rowsAffected := res
 	if rowsAffected == 0 {
 		http.Error(w, "Todo not found", http.StatusNotFound)
 		return
@@ -302,13 +296,13 @@ func updateTodo(w http.ResponseWriter, r *http.Request, id int) {
 		return
 	}
 	updateTodo.ID = id
-	res, err := db.ExecContext(ctx, "UPDATE todos SET task = $1, completed = $2 WHERE id = $3 and user_id = $4", updateTodo.Task, updateTodo.Completed, id, userID)
+	res, err := store.UpdateUserTodo(ctx, updateTodo.Task, updateTodo.Completed, updateTodo.ID, userID)
 
 	if err != nil {
 		http.Error(w, "Not able to update the DB", http.StatusInternalServerError)
 		return
 	}
-	rowsAffected, _ := res.RowsAffected()
+	rowsAffected := res
 	if rowsAffected == 0 {
 		http.Error(w, "Todo not found", http.StatusNotFound)
 		return
@@ -332,7 +326,6 @@ func updateTodo(w http.ResponseWriter, r *http.Request, id int) {
 
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-
 	defer cancel()
 
 	if r.Method != http.MethodPost {
@@ -351,15 +344,10 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//fetch the user from the database
-
-	var user api.User
-	sqlStatement := "SELECT id, password_hash FROM users WHERE username = $1"
-	err = db.QueryRowContext(ctx, sqlStatement, creds.Username).Scan(&user.ID, &user.PasswordHash)
-
+	// Call store function
+	user, err := store.GetUserByUsername(ctx, creds.Username)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			// If the user doesn't exist, return an unauthorized error
 			http.Error(w, "Invalid username or password", http.StatusUnauthorized)
 		} else {
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -367,13 +355,14 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Password checking stays in handler (business logic)
 	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(creds.Password))
-
 	if err != nil {
 		http.Error(w, "Invalid username and password", http.StatusUnauthorized)
 		return
 	}
 
+	// JWT creation stays in handler
 	expirationTime := time.Now().Add(15 * time.Minute)
 	claims := &api.Claims{
 		UserID: user.ID,
@@ -392,7 +381,6 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"token": tokenString})
-
 }
 
 func authMiddleware(next http.HandlerFunc) http.HandlerFunc {

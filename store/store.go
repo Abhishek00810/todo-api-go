@@ -107,3 +107,67 @@ func CreateUserTodo(ctx context.Context, userID interface{}, task string, comple
 	}
 	return newID, nil
 }
+
+func GetUserTodo(ctx context.Context, userID interface{}, id int) (api.Todo, error) {
+	var Todo api.Todo
+	err := DB.QueryRowContext(ctx, "SELECT id, task, completed FROM todos WHERE id = $1 and user_id = $2", id, userID).Scan(&Todo.ID, &Todo.Task, &Todo.Completed)
+
+	if err != nil {
+		return api.Todo{}, err
+	}
+	return Todo, err
+}
+
+func DeleteUserTodo(ctx context.Context, todoID int, userID interface{}) (int64, error) {
+	res, err := DB.ExecContext(ctx, "DELETE FROM todos WHERE id = $1 AND user_id = $2", todoID, userID)
+	if err != nil {
+		return 0, err
+	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+
+	return rowsAffected, nil
+}
+
+func UpdateUserTodo(ctx context.Context, task string, completed bool, id int, userID interface{}) (int64, error) {
+	res, err := DB.ExecContext(ctx, "UPDATE todos SET task = $1, completed = $2 WHERE id = $3 and user_id = $4", task, completed, id, userID)
+
+	if err != nil {
+		return 0, err
+	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+
+	return rowsAffected, nil
+
+}
+
+func GetUserByUsername(ctx context.Context, username string) (*api.User, error) {
+	var user api.User
+	sqlStatement := "SELECT id, password_hash FROM users WHERE username = $1"
+	err := DB.QueryRowContext(ctx, sqlStatement, username).Scan(&user.ID, &user.PasswordHash)
+
+	if err != nil {
+		return nil, err // Return raw error - handler decides if it's "not found" or "server error"
+	}
+
+	return &user, nil
+}
+
+func CreateUser(ctx context.Context, username, passwordHash string) (int, error) {
+	var newUserID int
+	sqlStatement := `INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id`
+
+	err := DB.QueryRowContext(ctx, sqlStatement, username, passwordHash).Scan(&newUserID)
+	if err != nil {
+		return 0, err // Return raw error - handler decides if it's duplicate username or server error
+	}
+
+	return newUserID, nil
+}
