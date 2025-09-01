@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"todo-api-v1/api"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -98,7 +99,7 @@ func TestGetTodos(t *testing.T) {
 	clearTable()
 	setupTestData() // Add this line to insert test data
 
-	var todos []Todo
+	var todos []api.Todo
 
 	req := httptest.NewRequest(http.MethodGet, "/todos", nil)
 	rr := httptest.NewRecorder()
@@ -161,7 +162,7 @@ func TestCreateTodo(t *testing.T) {
 				t.Errorf("expected status : %d, got %d", tc.expectedStatusCode, rr.Code)
 			}
 			if rr.Code == http.StatusCreated {
-				var todo Todo
+				var todo api.Todo
 				err := json.NewDecoder(rr.Body).Decode(&todo)
 				if err != nil {
 					t.Fatalf("could not decode response body: %v", err)
@@ -265,7 +266,7 @@ func TestDeleteTodo(t *testing.T) {
 				idStr := strings.TrimPrefix(tc.path, "/todos/")
 				id, _ := strconv.Atoi(idStr)
 
-				var todo Todo
+				var todo api.Todo
 				err := db.QueryRow("SELECT id FROM todos WHERE id = $1", id).Scan(&todo.ID)
 
 				if err != sql.ErrNoRows {

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 	"todo-api-v1/api"
+	"todo-api-v1/store"
 
 	"github.com/golang-jwt/jwt/v5"
 	_ "github.com/lib/pq" // The SQLite driver
@@ -122,17 +123,10 @@ func GetTodos(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
-
 	defer cancel()
-
-	rows, err := db.QueryContext(
-		ctx,
-		"SELECT id, task, completed FROM todos WHERE user_id = $1",
-		userID,
-	)
-
+	todos, err := store.GetUserTodos(ctx, userID)
 	if err != nil {
-		// If the timeout was exceeded, the error will be context.DeadlineExceeded
+		// Keep your existing error handling logic here
 		if errors.Is(err, context.DeadlineExceeded) {
 			http.Error(w, "Request timed out", http.StatusGatewayTimeout)
 		} else {
@@ -141,24 +135,6 @@ func GetTodos(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	defer rows.Close()
-
-	var todos []api.Todo
-
-	for rows.Next() {
-		var t api.Todo
-		err = rows.Scan(&t.ID, &t.Task, &t.Completed)
-		if err != nil {
-			http.Error(w, "Error while scanning values", http.StatusInternalServerError)
-		}
-		todos = append(todos, t)
-	}
-
-	if err := rows.Err(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
 	w.Header().Set("Content-Type", "application/json")
 	err = json.NewEncoder(w).Encode(todos)
 	if err != nil {
@@ -188,13 +164,13 @@ func CreateTodo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var newID int
-	err = db.QueryRowContext(ctx, `INSERT INTO todos (task, completed, user_id) VALUES ($1, $2, $3) RETURNING id`, NewTodo.Task, NewTodo.Completed, userID).Scan(&newID)
+	newID, err := store.CreateUserTodo(ctx, userID, NewTodo.Task, NewTodo.Completed)
+
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			http.Error(w, "Request timed out", http.StatusGatewayTimeout)
 		} else {
-			http.Error(w, "invalid query: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Database error: "+err.Error(), http.StatusInternalServerError)
 		}
 		return
 	}
@@ -354,63 +330,6 @@ func updateTodo(w http.ResponseWriter, r *http.Request, id int) {
 
 }
 
-func setUpDB() (*sql.DB, error) {
-	dbSource := os.Getenv("DB_SOURCE")
-	if dbSource == "" {
-		log.Fatal("FATAL: DB_SOURCE environment variable is not set.")
-	}
-
-	var err error
-	db, err = sql.Open("postgres", dbSource)
-	if err != nil {
-		return nil, err
-	}
-
-	if err = db.Ping(); err != nil {
-		return nil, err
-	}
-
-	// FIX: Using correct PostgreSQL syntax
-	// In your initDB() function in main.go
-	createTableSQL := `
-CREATE TABLE IF NOT EXISTS users (
-    id SERIAL PRIMARY KEY,
-    username TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS todos (
-    id SERIAL PRIMARY KEY,
-    task TEXT NOT NULL,
-    completed BOOLEAN NOT NULL,
-    user_id INTEGER NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-);`
-
-	if _, err = db.Exec(createTableSQL); err != nil {
-		return nil, err
-	}
-
-	log.Println("Database connection successful and table created.")
-
-	//REDIS IMPLEMENTATION
-	redisAddr := os.Getenv("REDIS_ADDR")
-
-	if redisAddr == "" {
-		log.Fatalf("FATAL: count not load redis address")
-	}
-	rdb = redis.NewClient(&redis.Options{
-		Addr: redisAddr, // The address from our docker-compose.yml
-	})
-
-	if _, err = rdb.Ping(context.Background()).Result(); err != nil {
-		log.Fatalf("FATAL: Could not connect to Redis: %v for %s", err, redisAddr)
-	}
-	log.Println("Redis connection successful.")
-
-	return db, nil
-}
-
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 
@@ -523,12 +442,10 @@ func main() {
 	}
 	jwtKey = []byte(secret)
 
-	db, err = setUpDB()
-	if err != nil {
-		log.Fatalf("FATAL: Could not initialize database: %v", err)
-	}
-
+	db = store.InitDB()
+	rdb = store.InitRedis()
 	defer db.Close()
+	defer rdb.Close()
 
 	log.Println("Database initialized and table created successfully.")
 
