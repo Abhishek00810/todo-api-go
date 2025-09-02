@@ -1,0 +1,18 @@
+# This is the version of the App Runner configuration file format.
+version: 1.0
+
+# This section describes how to build our application.
+build:
+  # Tell App Runner we are building from a source directory.
+  runtime: dockerfile
+  # Tell App Runner where to find the Dockerfile.
+  dockerfile: Dockerfile
+  # Specify the architecture. For your Mac M-series chip, this is the correct setting.
+  architecture: arm64
+
+# This section describes how to run our application.
+run:
+  # The port our application listens on.
+  port: 8080
+  # The command to start our application (this is optional as it's in our Dockerfile, but good to have).
+  command: ./todo-api
