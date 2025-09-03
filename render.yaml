@@ -1,39 +1,32 @@
-# This is the blueprint for our application on Render.
+# In render.yaml
 
 services:
   # This is our PostgreSQL Database service.
   - type: pserv
     name: todos-db
-    plan: free # Use the free plan for the database
-    # Note: Render automatically provides the connection string for us.
+    runtime: postgres # FIX: We must specify the runtime
+    plan: free
 
   # This is our Redis Cache service.
   - type: pserv
     name: todos-cache
-    plan: free # Use the free plan for Redis
-    # Note: Render automatically provides the Redis address for us.
+    runtime: redis # FIX: We must specify the runtime
+    plan: free
 
   # This is our Go Web Service (your API).
   - type: web
     name: todo-api
-    plan: free # Use the free plan for the web service
-    env: docker # Tell Render to build our app using our Dockerfile
-    healthCheckPath: /health # We will add a health check endpoint
+    plan: free
+    env: docker
+    healthCheckPath: /health
     envVars:
-      # This is the magic part. Render automatically gives us the connection
-      # strings for our other services. We just pass them to our app.
-      - key: DB_SOURCE
+      - key: DB_SOURCE # This part is now correct
         fromService:
           type: pserv
           name: todos-db
           property: connectionString
-      - key: REDIS_ADDR
+      - key: REDIS_URL # FIX: We get the full URL from Render
         fromService:
           type: pserv
           name: todos-cache
-          property: hostport
-      - key: REDIS_PASSWORD
-        fromService:
-          type: pserv
-          name: todos-cache
-          property: password
+          property: connectionString
