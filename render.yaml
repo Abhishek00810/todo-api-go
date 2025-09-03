@@ -21,20 +21,13 @@ services:
         fromDatabase:
           name: todos-db
           property: connectionString
-      
-      # Connect to Render's Redis
-      - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: todos-cache
-          property: connectionString
-      
+          
       # Redis Address (if your app uses this instead of REDIS_URL)
       - key: REDIS_ADDR
         fromService:
           type: keyvalue
           name: todos-cache
-          property: host
+          property: connectionString
       
       # JWT Secret - this was missing and causing the crash!
       - key: JWT_SECRET
