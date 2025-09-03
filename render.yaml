@@ -20,11 +20,12 @@ services:
         fromDatabase:  # Use 'fromDatabase' for PostgreSQL
           name: todos-db
           property: connectionString
-      - key: REDIS_ADDR
-        fromService:   # Use 'fromService' for Redis
-          type: keyvalue
-          name: todos-cache
-          property: connectionString
+      - key: REDIS_URL
+        fromService:
+        type: keyvalue
+        name: todos-cache
+        property: connectionString
+
       - key: JWT_SECRET
         generateValue: true
 

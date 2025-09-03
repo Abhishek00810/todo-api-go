@@ -55,20 +55,23 @@ CREATE TABLE IF NOT EXISTS todos (
 }
 
 func InitRedis() *redis.Client {
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
+	redisURL := os.Getenv("REDIS_URL")
+	if redisURL == "" {
 		log.Fatalf("FATAL: count not load redis address")
 	}
-	rdb := redis.NewClient(&redis.Options{
-		Addr: redisAddr, // The address from our docker-compose.yml
-	})
+	opt, err := redis.ParseURL(redisURL)
+	if err != nil {
+		log.Fatalf("Could not parse Redis URL: %v", err)
+	}
 
-	if _, err := rdb.Ping(context.Background()).Result(); err != nil {
-		log.Fatalf("FATAL: Could not connect to Redis: %v for %s", err, redisAddr)
+	client := redis.NewClient(opt)
+
+	if _, err := client.Ping(context.Background()).Result(); err != nil {
+		log.Fatalf("FATAL: Could not connect to Redis: %v for %s", err, redisURL)
 	}
 	log.Println("Redis connection successful.")
 
-	return rdb
+	return client
 }
 
 func GetUserTodos(ctx context.Context, userID interface{}) ([]api.Todo, error) {
