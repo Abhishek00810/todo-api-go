@@ -442,6 +442,9 @@ func main() {
 	http.HandleFunc("/register", registerHandler)
 
 	http.HandleFunc("/login", loginHandler)
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(w, "OK")
+	})
 
 	fmt.Println("Server listening to port 8080")
 
