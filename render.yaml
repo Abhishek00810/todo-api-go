@@ -1,7 +1,7 @@
-# render.yaml - Using Render's Built-in Databases
+# render.yaml
 services:
-  # Render's Redis Cache
-  - type: keyvalue
+  # Redis Cache - this stays in services
+  - type: keyvalue  # Use 'keyvalue' instead of 'pserv' for Redis
     name: todos-cache
     plan: free
     ipAllowList:
@@ -16,32 +16,19 @@ services:
     dockerfilePath: ./Dockerfile
     healthCheckPath: /health
     envVars:
-      # Connect to Render's PostgreSQL
       - key: DB_SOURCE
-        fromDatabase:
+        fromDatabase:  # Use 'fromDatabase' for PostgreSQL
           name: todos-db
           property: connectionString
-          
-      # Redis Address (if your app uses this instead of REDIS_URL)
       - key: REDIS_ADDR
-        fromService:
+        fromService:   # Use 'fromService' for Redis
           type: keyvalue
           name: todos-cache
           property: connectionString
-      
-      # JWT Secret - this was missing and causing the crash!
       - key: JWT_SECRET
         generateValue: true
-      
-      # Port
-      - key: PORT
-        value: "8080"
-      
-      # Environment (optional - helps your app know it's in production)
-      - key: ENV
-        value: "production"
 
-# Render's PostgreSQL Database
+# PostgreSQL databases go in a separate section
 databases:
   - name: todos-db
     plan: free
