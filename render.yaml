@@ -1,29 +1,32 @@
+# render.yaml
 services:
+  # PostgreSQL Database
   - type: pserv
     name: todos-db
-    runtime: postgres
+    env: postgres  # Use 'env', not 'runtime'
     plan: free
-  
+    
+  # Redis Cache  
   - type: pserv
     name: todos-cache
-    runtime: redis
+    env: redis     # Use 'env', not 'runtime'
     plan: free
-  
+    
+  # Go Web Service
   - type: web
     name: todo-api
     plan: free
-    env: docker  # ✅ This is correct for Docker
+    env: docker
+    dockerfilePath: ./Dockerfile
     healthCheckPath: /health
-    # Add this line:
-    dockerfilePath: ./Dockerfile  # Point to your Dockerfile location
     envVars:
       - key: DB_SOURCE
         fromService:
           type: pserv
           name: todos-db
-          property: connectionString
+          property: connectionString  # This should work for pserv
       - key: REDIS_URL
         fromService:
           type: pserv
           name: todos-cache
-          property: connectionString
+          property: connectionString  # This should work for pserv
