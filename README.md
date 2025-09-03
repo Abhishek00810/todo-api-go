@@ -1,4 +1,28 @@
-Go Todo API: A Production-Grade RESTful ServiceThis repository contains the source code for a high-performance, containerized REST API for a Todo application. This project is a demonstration of modern backend development practices, including a multi-service architecture, secure authentication, a full test suite, and cloud deployment.🚀 Live DemoThe API is deployed and live on Render. You can interact with it using curl or Postman.Live URL: https://todo-api-n1s3.onrender.com/Note: The service is on a free tier and may "sleep" during periods of inactivity. The first request might take 15-30 seconds to respond as the container starts up (this is known as a "cold start").🏛️ ArchitectureThis project runs as a multi-container application orchestrated locally by Docker Compose and deployed as a multi-service blueprint on Render. It follows a clean separation of concerns between the API, data, and caching layers.graph TD
+# 📝 Go Todo API  
+*A Production-Grade RESTful Service with PostgreSQL, Redis, JWT Authentication, and Cloud Deployment*
+
+[![Go](https://img.shields.io/badge/Go-1.22+-blue?logo=go&logoColor=white)](https://go.dev/)  
+[![Postgres](https://img.shields.io/badge/PostgreSQL-15+-blue?logo=postgresql&logoColor=white)](https://www.postgresql.org/)  
+[![Redis](https://img.shields.io/badge/Redis-Cache-red?logo=redis&logoColor=white)](https://redis.io/)  
+[![Docker](https://img.shields.io/badge/Docker-Containerization-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)  
+[![Render](https://img.shields.io/badge/Deployed%20on-Render-46E3B7?logo=render&logoColor=white)](https://render.com/)
+
+---
+
+## 🚀 Live Demo
+The API is deployed on **Render**. You can test it with `curl` or **Postman**.  
+
+🌍 **Base URL**: [https://todo-api-n1s3.onrender.com](https://todo-api-n1s3.onrender.com)  
+
+⚠️ **Note**: This is running on Render’s **free tier**, so the service may **sleep** during inactivity.  
+The first request after inactivity may take **15–30 seconds** to respond (cold start).  
+
+---
+
+## 🏛️ Architecture
+
+```mermaid
+graph TD
     subgraph Client
         User[👨‍💻 Postman / curl]
     end
@@ -9,11 +33,11 @@ Go Todo API: A Production-Grade RESTful ServiceThis repository contains the sour
         end
 
         subgraph "PostgreSQL Managed Database"
-            DB[(fa:fa-database Todos & Users DB)]
+            DB[(Todos & Users DB)]
         end
 
         subgraph "Redis Managed Cache"
-            Cache[(fa:fa-bolt Redis Cache)]
+            Cache[(Redis Cache)]
         end
     end
 
@@ -23,24 +47,133 @@ Go Todo API: A Production-Grade RESTful ServiceThis repository contains the sour
     API -- "Cache Hit" --> Cache
     API -- "Cache Invalidation (on Write)" --> Cache
     API -- "All DB Writes" --> DB
+```
+#Tech Stack
 
-🛠️ Tech StackCategoryTechnologyPurposeLanguageGo (Golang)For building a high-performance, concurrent backend.DatabasePostgreSQLThe primary, persistent data store for users and todos.CacheRedisAn in-memory cache to reduce database load and improve read latency.ContainerizationDocker & Docker ComposeFor creating a consistent, portable development and production environment.APIRESTful JSON APIStandard-based communication for any type of client.AuthenticationJWT (JSON Web Tokens)Secure, stateless authentication for protecting API endpoints.Password SecuritybcryptThe industry-standard algorithm for securely hashing passwords.TestingGo testing packageFor comprehensive unit and integration tests.DeploymentRenderA modern cloud platform for deploying containerized services.✨ Key FeaturesFull CRUD Functionality for Todos (Create, Read, Update, Delete).Secure User Authentication with /register and /login endpoints.JWT-Protected Routes for all Todo operations using standard Go middleware.High-Performance Caching using the "cache-aside" pattern with Redis.Cache Invalidation on UPDATE and DELETE to ensure data consistency.Professional Project Structure with a clear separation between API and data storage layers.Persistent Data using Docker Volumes for local development and managed databases in production.Graceful Shutdown implemented to ensure data integrity and prevent resource leaks.Comprehensive Integration Tests that verify the API, database, and cache work together correctly.🚀 Getting Started (Running Locally)PrerequisitesDocker & Docker Composemake (optional, for shortcuts)InstructionsClone the repository:git clone [https://github.com/your-username/your-repo-name.git](https://github.com/your-username/your-repo-name.git)
-cd your-repo-name
-Create your environment file:Copy the example file and fill in your desired local database credentials.cp .env.example .env
-Run the application stack:This single command will build the Go binary, start the Postgres and Redis containers, and run your API.docker-compose up --build
-The API will be available at http://localhost:8080.🧪 Running TestsThe project includes a full integration test suite that runs against a separate, temporary test database.Start the test environment:docker-compose -f docker-compose.test.yml up -d
-Run the tests:make test
-Tear down the test environment:docker-compose -f docker-compose.test.yml down
-📖 API EndpointsBase URL: https://todo-api-n1s3.onrender.comAuthenticationPOST /registerCreates a new user.curl -X POST -H "Content-Type: application/json" \
-  -d '{"username": "testuser", "password": "password123"}' \
-  [https://todo-api-n1s3.onrender.com/register](https://todo-api-n1s3.onrender.com/register)
-POST /loginAuthenticates a user and returns a JWT.curl -X POST -H "Content-Type: application/json" \
-  -d '{"username": "testuser", "password": "password123"}' \
-  [https://todo-api-n1s3.onrender.com/login](https://todo-api-n1s3.onrender.com/login)
-Todos (Protected)Requires Authorization: Bearer <your_jwt_token> header.GET /todos/Fetches all todos for the authenticated user.TOKEN="your_jwt_token_here"
-curl -H "Authorization: Bearer $TOKEN" [https://todo-api-n1s3.onrender.com/todos/](https://todo-api-n1s3.onrender.com/todos/)
-POST /todos/Creates a new todo.TOKEN="your_jwt_token_here"
-curl -X POST -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
-  -d '{"task": "Write professional README", "completed": true}' \
-  [https://todo-api-n1s3.onrender.com/todos/](https://todo-api-n1s3.onrender.com/todos/)
+✅ User Authentication with /register & /login
+
+✅ JWT-Protected Routes for all Todo operations
+
+✅ CRUD for Todos (Create, Read, Update, Delete)
+
+✅ Cache-aside Pattern using Redis for fast reads
+
+✅ Cache Invalidation on writes to ensure consistency
+
+✅ Graceful Shutdown to prevent data loss & leaks
+
+✅ Dockerized Setup for local and prod parity
+
+✅ Integration Tests (API + DB + Cache end-to-end)
+
+
+⚡ Getting Started (Local Development)
+🔹 Prerequisites
+
+Docker
+ + Docker Compose
+
+make (optional for shortcuts)
+
+🔹 Setup
+# 1. Clone the repo
+```git clone https://github.com/your-username/go-todo-api.git```
+cd go-todo-api
+
+# 2. Copy env file & configure DB/Redis
+cp .env.example .env
+
+# 3. Build & start services
+docker-compose up --build
+
+
+API will be live at:
+👉 http://localhost:8080
+
+🧪 Running Tests
+
+The test suite spins up a separate Postgres & Redis environment for isolation.
+
+# Start test environment
+docker-compose -f docker-compose.test.yml up -d
+
+# Run tests
+make test
+
+# Tear down
+```docker-compose -f docker-compose.test.yml down```
+
+📖 API Endpoints
+
+Base URL: `https://todo-api-n1s3.onrender.com`
+
+🔹 Authentication
+Register
+`curl -X POST -H "Content-Type: application/json" \
+-d '{"username": "testuser", "password": "password123"}' \
+https://todo-api-n1s3.onrender.com/register`
+
+Login
+`curl -X POST -H "Content-Type: application/json" \
+-d '{"username": "testuser", "password": "password123"}' \
+https://todo-api-n1s3.onrender.com/login`
+
+
+Returns: { "token": "<JWT_TOKEN>" }
+
+🔹 Todos (Protected)
+
+Requires header:
+Authorization: Bearer <JWT_TOKEN>
+
+Get All Todos
+`curl -H "Authorization: Bearer $TOKEN" \
+https://todo-api-n1s3.onrender.com/todos/`
+
+Create Todo
+`curl -X POST -H "Content-Type: application/json" \
+-H "Authorization: Bearer $TOKEN" \
+-d '{"task": "Write README", "completed": false}' \
+https://todo-api-n1s3.onrender.com/todos/`
+
+Update Todo
+`curl -X PUT -H "Content-Type: application/json" \
+-H "Authorization: Bearer $TOKEN" \
+-d '{"task": "Updated Task", "completed": true}' \
+https://todo-api-n1s3.onrender.com/todos/1`
+
+Delete Todo
+`curl -X DELETE -H "Authorization: Bearer $TOKEN" \
+https://todo-api-n1s3.onrender.com/todos/1`
+
+📦 Project Structure
+go-todo-api/
+│── cmd/              # Main entrypoint
+│── internal/
+│   ├── api/          # HTTP handlers & middleware
+│   ├── db/           # Database layer
+│   ├── cache/        # Redis cache logic
+│   └── auth/         # JWT & password hashing
+│── migrations/       # SQL migrations
+│── docker-compose.yml
+│── Dockerfile
+│── .env.example
+│── Makefile
+│── README.md
+
+🤝 Contributing
+
+Fork the repo 🍴
+
+Create a feature branch (git checkout -b feature-x)
+
+Commit changes (git commit -m 'Add feature x')
+
+Push (git push origin feature-x)
+
+Open a Pull Request 🚀
+
+📜 License
+
+This project is licensed under the MIT License.
+Feel free to use, modify, and distribute with attribution.
