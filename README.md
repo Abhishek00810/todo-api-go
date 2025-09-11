@@ -1,179 +1,381 @@
-# 📝 Go Todo API  
-*A Production-Grade RESTful Service with PostgreSQL, Redis, JWT Authentication, and Cloud Deployment*
+# 📝 Go Todo API
+**A Production-Grade RESTful Service with PostgreSQL, Redis, JWT Authentication, and Kubernetes Deployment**
 
-[![Go](https://img.shields.io/badge/Go-1.22+-blue?logo=go&logoColor=white)](https://go.dev/)  
-[![Postgres](https://img.shields.io/badge/PostgreSQL-15+-blue?logo=postgresql&logoColor=white)](https://www.postgresql.org/)  
-[![Redis](https://img.shields.io/badge/Redis-Cache-red?logo=redis&logoColor=white)](https://redis.io/)  
-[![Docker](https://img.shields.io/badge/Docker-Containerization-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)  
-[![Render](https://img.shields.io/badge/Deployed%20on-Render-46E3B7?logo=render&logoColor=white)](https://render.com/)
-
----
+![Go](https://img.shields.io/badge/Go-00ADD8?style=flat&logo=go&logoColor=white)
+![Postgres](https://img.shields.io/badge/PostgreSQL-336791?style=flat&logo=postgresql&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat&logo=redis&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)
+![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?style=flat&logo=kubernetes&logoColor=white)
+![Helm](https://img.shields.io/badge/Helm-0F1689?style=flat&logo=helm&logoColor=white)
 
 ## 🚀 Live Demo
-The API is deployed on **Render**. You can test it with `curl` or **Postman**.  
+The API is deployed on Render with Kubernetes-ready configuration.
 
-🌍 **Base URL**: [https://todo-api-n1s3.onrender.com](https://todo-api-n1s3.onrender.com)  
+🌍 **Base URL**: https://todo-api-n1s3.onrender.com
 
-⚠️ **Note**: This is running on Render’s **free tier**, so the service may **sleep** during inactivity.  
-The first request after inactivity may take **15–30 seconds** to respond (cold start).  
-
----
+⚠️ **Note**: This is running on Render's free tier, so the service may sleep during inactivity.
+The first request after inactivity may take 15–30 seconds to respond (cold start).
 
 ## 🏛️ Architecture
 
-```mermaid
-graph TD
-    subgraph Client
-        User[👨‍💻 Postman / curl]
-    end
-
-    subgraph "Cloud Environment (Render)"
-        subgraph "Go API Web Service"
-            API[Go HTTP Server w/ Middleware]
-        end
-
-        subgraph "PostgreSQL Managed Database"
-            DB[(Todos & Users DB)]
-        end
-
-        subgraph "Redis Managed Cache"
-            Cache[(Redis Cache)]
-        end
-    end
-
-    User -- "HTTPS Request" --> API
-    API -- "1. Cache Miss" --> DB
-    API -- "2. Populate Cache" --> Cache
-    API -- "Cache Hit" --> Cache
-    API -- "Cache Invalidation (on Write)" --> Cache
-    API -- "All DB Writes" --> DB
 ```
-#Tech Stack
+┌─────────────────────────────────────────────────────────────┐
+│                    Kubernetes Cluster                       │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐     │
+│  │   Ingress   │    │ LoadBalancer│    │   Service   │     │
+│  │             │────│             │────│  Discovery  │     │
+│  └─────────────┘    └─────────────┘    └─────────────┘     │
+│         │                                       │          │
+│         ▼                                       ▼          │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │              Application Layer                      │   │
+│  │  ┌─────────┐  ┌─────────┐  ┌─────────┐           │   │
+│  │  │Go API   │  │Go API   │  │Go API   │           │   │
+│  │  │Pod 1    │  │Pod 2    │  │Pod 3    │           │   │
+│  │  └─────────┘  └─────────┘  └─────────┘           │   │
+│  └─────────────────────────────────────────────────────┘   │
+│         │                               │                  │
+│         ▼                               ▼                  │
+│  ┌─────────────┐                ┌─────────────┐           │
+│  │ PostgreSQL  │                │   Redis     │           │
+│  │   Master    │                │   Cache     │           │
+│  │    Pod      │                │    Pod      │           │
+│  └─────────────┘                └─────────────┘           │
+│         │                               │                  │
+│         ▼                               ▼                  │
+│  ┌─────────────┐                ┌─────────────┐           │
+│  │Persistent   │                │Persistent   │           │
+│  │Volume (DB)  │                │Volume (Cache│           │
+│  └─────────────┘                └─────────────┘           │
+└─────────────────────────────────────────────────────────────┘
+```
 
-✅ User Authentication with /register & /login
+## ✨ Features
 
-✅ JWT-Protected Routes for all Todo operations
+### 🔐 Authentication & Security
+- ✅ User Registration with `/register` & `/login`
+- ✅ JWT-Protected Routes for all Todo operations
+- ✅ Password hashing with bcrypt
+- ✅ Kubernetes Secrets for sensitive data
 
-✅ CRUD for Todos (Create, Read, Update, Delete)
+### 📊 Database & Caching
+- ✅ CRUD for Todos (Create, Read, Update, Delete)
+- ✅ Cache-aside Pattern using Redis for fast reads
+- ✅ Cache Invalidation on writes to ensure consistency
+- ✅ Persistent Volumes for data durability
 
-✅ Cache-aside Pattern using Redis for fast reads
+### 🚀 Production Ready
+- ✅ Graceful Shutdown to prevent data loss & leaks
+- ✅ Health Checks for Kubernetes probes
+- ✅ Horizontal Pod Autoscaling (HPA)
+- ✅ Resource limits and requests
+- ✅ ConfigMaps for environment configuration
 
-✅ Cache Invalidation on writes to ensure consistency
+### 🔧 DevOps & Deployment
+- ✅ Dockerized Setup for local and prod parity
+- ✅ Integration Tests (API + DB + Cache end-to-end)
+- ✅ Kubernetes manifests for production deployment
+- ✅ Helm charts for easy deployment
+- ✅ CI/CD with GitHub Actions
 
-✅ Graceful Shutdown to prevent data loss & leaks
+## ⚡ Getting Started
 
-✅ Dockerized Setup for local and prod parity
+### 🔹 Prerequisites
 
-✅ Integration Tests (API + DB + Cache end-to-end)
+- **Docker** & **Docker Compose**
+- **Kubernetes** cluster (minikube, kind, or cloud provider)
+- **kubectl** configured
+- **Helm** (optional, for easier deployment)
+- **make** (optional for shortcuts)
 
+### 🔹 Local Development (Docker Compose)
 
-⚡ Getting Started (Local Development)
-🔹 Prerequisites
-
-Docker
- + Docker Compose
-
-make (optional for shortcuts)
-
-🔹 Setup
-# 1. Clone the repo
-```git clone https://github.com/your-username/go-todo-api.git```
+1. **Clone the repository**
+```bash
+git clone https://github.com/Abhishek00810/go-todo-api.git
 cd go-todo-api
+```
 
-# 2. Copy env file & configure DB/Redis
+2. **Copy environment file**
+```bash
 cp .env.example .env
+```
 
-# 3. Build & start services
+3. **Start services**
+```bash
 docker-compose up --build
+```
 
+API will be live at: 👉 **http://localhost:8080**
 
-API will be live at:
-👉 http://localhost:8080
+### 🔹 Kubernetes Deployment
 
-🧪 Running Tests
+#### Option 1: Using Kubectl (Manual)
 
-The test suite spins up a separate Postgres & Redis environment for isolation.
+1. **Apply PostgreSQL with Persistent Storage**
+```bash
+kubectl apply -f k8s/postgres.yaml
+```
 
+2. **Apply Redis**
+```bash
+kubectl apply -f k8s/redis.yaml
+```
+
+3. **Apply Application**
+```bash
+kubectl apply -f k8s/app.yaml
+```
+
+4. **Apply Ingress/LoadBalancer**
+```bash
+kubectl apply -f k8s/ingress.yaml
+```
+
+#### Option 2: Using Helm (Recommended)
+
+1. **Install the Helm chart**
+```bash
+helm install todo-api ./chart/todo-api
+```
+
+2. **Upgrade deployment**
+```bash
+helm upgrade todo-api ./chart/todo-api
+```
+
+3. **Check status**
+```bash
+kubectl get pods
+kubectl get services
+```
+
+## 🧪 Testing
+
+### Local Testing
+```bash
 # Start test environment
 docker-compose -f docker-compose.test.yml up -d
 
 # Run tests
 make test
 
-# Tear down
-```docker-compose -f docker-compose.test.yml down```
+# Cleanup
+docker-compose -f docker-compose.test.yml down
+```
 
-📖 API Endpoints
+### Kubernetes Testing
+```bash
+# Port forward to access API
+kubectl port-forward service/todo-api-service 8080:80
 
-Base URL: `https://todo-api-n1s3.onrender.com`
+# Test endpoints
+curl http://localhost:8080/health
+```
 
-🔹 Authentication
-Register
-`curl -X POST -H "Content-Type: application/json" \
--d '{"username": "testuser", "password": "password123"}' \
-https://todo-api-n1s3.onrender.com/register`
+## 📖 API Endpoints
 
-Login
-`curl -X POST -H "Content-Type: application/json" \
--d '{"username": "testuser", "password": "password123"}' \
-https://todo-api-n1s3.onrender.com/login`
+**Base URL**: https://todo-api-n1s3.onrender.com
 
+### 🔹 Health Check
+```bash
+curl -X GET https://todo-api-n1s3.onrender.com/health
+```
 
-Returns: { "token": "<JWT_TOKEN>" }
+### 🔹 Authentication
 
-🔹 Todos (Protected)
+**Register**
+```bash
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"username": "testuser", "password": "password123"}' \
+  https://todo-api-n1s3.onrender.com/register
+```
 
-Requires header:
-Authorization: Bearer <JWT_TOKEN>
+**Login**
+```bash
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"username": "testuser", "password": "password123"}' \
+  https://todo-api-n1s3.onrender.com/login
+```
 
-Get All Todos
-`curl -H "Authorization: Bearer $TOKEN" \
-https://todo-api-n1s3.onrender.com/todos/`
+Returns: `{ "token": "<JWT_TOKEN>" }`
 
-Create Todo
-`curl -X POST -H "Content-Type: application/json" \
--H "Authorization: Bearer $TOKEN" \
--d '{"task": "Write README", "completed": false}' \
-https://todo-api-n1s3.onrender.com/todos/`
+### 🔹 Todos (Protected Routes)
 
-Update Todo
-`curl -X PUT -H "Content-Type: application/json" \
--H "Authorization: Bearer $TOKEN" \
--d '{"task": "Updated Task", "completed": true}' \
-https://todo-api-n1s3.onrender.com/todos/1`
+**Requires header**: `Authorization: Bearer <JWT_TOKEN>`
 
-Delete Todo
-`curl -X DELETE -H "Authorization: Bearer $TOKEN" \
-https://todo-api-n1s3.onrender.com/todos/1`
+**Get All Todos**
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  https://todo-api-n1s3.onrender.com/todos/
+```
 
-📦 Project Structure
+**Create Todo**
+```bash
+curl -X POST -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"task": "Deploy to Kubernetes", "completed": false}' \
+  https://todo-api-n1s3.onrender.com/todos/
+```
+
+**Update Todo**
+```bash
+curl -X PUT -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"task": "Updated Task", "completed": true}' \
+  https://todo-api-n1s3.onrender.com/todos/1
+```
+
+**Delete Todo**
+```bash
+curl -X DELETE -H "Authorization: Bearer $TOKEN" \
+  https://todo-api-n1s3.onrender.com/todos/1
+```
+
+## 📦 Project Structure
+
+```
 go-todo-api/
-│── cmd/              # Main entrypoint
-│── internal/
-│   ├── api/          # HTTP handlers & middleware
-│   ├── db/           # Database layer
-│   ├── cache/        # Redis cache logic
-│   └── auth/         # JWT & password hashing
-│── migrations/       # SQL migrations
-│── docker-compose.yml
-│── Dockerfile
-│── .env.example
-│── Makefile
-│── README.md
+├── .github/
+│   └── workflows/
+│       └── go.yml              # CI/CD pipeline
+├── api/                        # HTTP handlers & middleware
+├── chart/
+│   └── todo-api/              # Helm chart
+│       ├── Chart.yaml
+│       ├── values.yaml
+│       └── templates/
+├── k8s/                       # Kubernetes manifests
+│   ├── postgres.yaml         # PostgreSQL StatefulSet + PVC
+│   ├── redis.yaml            # Redis Deployment + Service
+│   ├── app.yaml              # Application Deployment + Service
+│   ├── configmap.yaml        # Configuration
+│   ├── secrets.yaml          # Sensitive data
+│   ├── ingress.yaml          # Load balancer / Ingress
+│   └── hpa.yaml              # Horizontal Pod Autoscaler
+├── store/                     # Database layer
+├── tmp/                       # Temporary files
+├── .env.example              # Environment template
+├── .gitignore
+├── Dbmain.go                 # Database initialization
+├── Dockerfile                # Production container
+├── Dockerfile.test           # Test container
+├── Makefile                  # Build automation
+├── README.md
+├── docker-compose.yml        # Local development
+├── docker-compose.test.yml   # Test environment
+├── go.mod                    # Go modules
+├── go.sum
+├── main_test.go             # Integration tests
+├── render.yaml              # Render.com deployment
+└── todos.db                 # SQLite (local development)
+```
 
-🤝 Contributing
+## 🛠️ Development Commands
 
-Fork the repo 🍴
+```bash
+# Build the application
+make build
 
-Create a feature branch (git checkout -b feature-x)
+# Run tests
+make test
 
-Commit changes (git commit -m 'Add feature x')
+# Build Docker image
+make docker-build
 
-Push (git push origin feature-x)
+# Deploy to Kubernetes
+make k8s-deploy
 
-Open a Pull Request 🚀
+# Clean up Kubernetes resources
+make k8s-clean
 
-📜 License
+# View logs
+kubectl logs -f deployment/todo-api
 
-This project is licensed under the MIT License.
-Feel free to use, modify, and distribute with attribution.
+# Scale application
+kubectl scale deployment todo-api --replicas=5
+
+# Check resource usage
+kubectl top pods
+```
+
+## 🔧 Configuration
+
+### Environment Variables
+```bash
+# Database
+DB_HOST=postgres-service
+DB_PORT=5432
+DB_USER=myuser
+DB_PASSWORD=mysecretpassword
+DB_NAME=todos
+
+# Redis Cache  
+REDIS_HOST=redis-service
+REDIS_PORT=6379
+
+# JWT
+JWT_SECRET=your-jwt-secret-key
+
+# Application
+PORT=8080
+```
+
+### Kubernetes Resources
+- **CPU Request**: 100m, **Limit**: 500m
+- **Memory Request**: 128Mi, **Limit**: 512Mi
+- **Replicas**: 3 (auto-scaling 2-10)
+- **PostgreSQL Storage**: 2Gi PVC
+- **Redis Storage**: 1Gi PVC
+
+## 🚀 Production Deployment Checklist
+
+- [ ] **Security**: Update JWT secrets and database passwords
+- [ ] **Resources**: Configure appropriate CPU/Memory limits
+- [ ] **Storage**: Set up persistent volumes with proper storage classes
+- [ ] **Monitoring**: Add health checks and metrics
+- [ ] **Scaling**: Configure HPA based on CPU/Memory usage
+- [ ] **Backup**: Set up database backup strategy
+- [ ] **SSL**: Configure TLS termination at ingress
+- [ ] **Logging**: Set up centralized logging (ELK/Fluentd)
+
+## 🤝 Contributing
+
+1. **Fork the repository** 🍴
+2. **Create a feature branch** (`git checkout -b feature/amazing-feature`)
+3. **Commit your changes** (`git commit -m 'Add amazing feature'`)
+4. **Push to the branch** (`git push origin feature/amazing-feature`)
+5. **Open a Pull Request** 🚀
+
+## 📊 Monitoring & Observability
+
+### Health Checks
+- **Liveness Probe**: `/health`
+- **Readiness Probe**: `/ready`
+- **Startup Probe**: `/health`
+
+### Metrics (Future Enhancement)
+- Request count and latency
+- Database connection pool status
+- Cache hit/miss rates
+- Custom business metrics
+
+## 🔒 Security
+
+- JWT tokens for authentication
+- Kubernetes Secrets for sensitive data
+- Network policies for pod-to-pod communication
+- RBAC for service accounts
+- Container security contexts
+
+## 📜 License
+
+This project is licensed under the **MIT License**. Feel free to use, modify, and distribute with attribution.
+
+---
+
+## 🌟 Star this repository if you found it helpful!
+
+**Happy Coding!** 🎉
