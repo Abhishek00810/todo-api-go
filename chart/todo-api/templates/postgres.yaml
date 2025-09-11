@@ -1,0 +1,113 @@
+# k8s/postgres.yaml
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+type: Opaque
+data:
+  # The key MUST match what the Deployment expects. The official env var is POSTGRES_PASSWORD.
+  # The value is "mysecretpassword" encoded in base64.
+  POSTGRES_PASSWORD: {{ .Values.postgres.auth.password | b64enc | quote}}
+
+--- 
+#thingare like PV (from where the host storage is, the storage itself) -> PVC (which request the storage) -> Mounting(connecting storage to container,
+#post gres will write in the contianer itself, but k8s will pipeline this into PV directory) -> Volume defiinition(storage I want to mount is in
+# PV whatever the name)
+
+# Step 1: Create a PersistentVolume (the actual storage)
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: postgres-pv
+spec:
+  capacity:
+    storage: {{.Values.postgres.storage.size}}
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain  # Keep data when PVC is deleted
+  storageClassName: manual  # We'll use this to match with PVC
+  hostPath:
+    path: /data/postgres  # Where on the host node the data will be stored
+    type: DirectoryOrCreate  
+
+---
+
+#step 2 -> create a pvc which will be request for the storage
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce  # Must match the PV's accessMode
+  resources:
+    requests:
+      storage:  {{.Values.postgres.storage.size}}  # How much storage we're requesting
+  storageClassName: manual  # This connects to our PV above
+
+---
+
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+spec:
+  # ClusterIP is the default, which is perfect for an internal service.
+  type: ClusterIP
+  selector:
+    app: postgres # This tells the Service to find Pods with the label "app: postgres".
+  ports:
+    - protocol: TCP
+      port: 5432       # The port of the Service itself.
+      targetPort: 5432 # The port on the Pods to send traffic to.
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-deployment
+spec:
+  replicas: 1
+  # The selector tells the Deployment which Pods to manage.
+  selector:
+    matchLabels:
+      app: postgres
+  # FIX: The 'template' is the blueprint for the Pod and must be at the same level as 'selector'.
+  template:
+    metadata:
+      # The Pods created by this Deployment will get this label.
+      # This MUST match the selector above.
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}" # Using a specific version is good practice.
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: {{ .Values.postgres.auth.username | quote }}
+            - name: POSTGRES_DB # FIX: Added the required database name.
+              value: "todos"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  # This must match the name of the Secret object.
+                  name: postgres-secret
+                  # FIX: This key must match the key inside the Secret's 'data' section.
+                  key: POSTGRES_PASSWORD
+
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+              subPath: postgres
+
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: postgres-pvc

@@ -55,23 +55,43 @@ CREATE TABLE IF NOT EXISTS todos (
 }
 
 func InitRedis() *redis.Client {
+	// 1. Get the configuration from the environment
 	redisURL := os.Getenv("REDIS_URL")
-	if redisURL == "" {
-		log.Fatalf("FATAL: count not load redis address")
-	}
-	opt, err := redis.ParseURL(redisURL)
-	if err != nil {
-		log.Fatalf("Could not parse Redis URL: %v", err)
+	redisAddr := os.Getenv("REDIS_ADDR")
+
+	var opt *redis.Options
+	var err error
+
+	// 2. Decide WHICH configuration to use
+	if redisURL != "" {
+		// Production path: Parse the full URL
+		log.Println("Found REDIS_URL, parsing for production...")
+		opt, err = redis.ParseURL(redisURL)
+		if err != nil {
+			log.Fatalf("FATAL: Could not parse Redis URL: %v", err)
+		}
+	} else if redisAddr != "" {
+		// Local path: Use the simple address
+		log.Println("Found REDIS_ADDR, using simple connection for local dev...")
+		opt = &redis.Options{
+			Addr: redisAddr,
+		}
+	} else {
+		// No configuration found, this is a fatal error.
+		log.Fatal("FATAL: Neither REDIS_URL nor REDIS_ADDR environment variable is set.")
 	}
 
-	client := redis.NewClient(opt)
+	// 3. Create and test the client ONCE, at the end.
+	// This code now runs for BOTH local and production paths.
+	rdb := redis.NewClient(opt)
 
-	if _, err := client.Ping(context.Background()).Result(); err != nil {
-		log.Fatalf("FATAL: Could not connect to Redis: %v for %s", err, redisURL)
+	// We ping to verify the connection is alive BEFORE returning.
+	if _, err := rdb.Ping(context.Background()).Result(); err != nil {
+		log.Fatalf("FATAL: Could not connect to Redis: %v", err)
 	}
+
 	log.Println("Redis connection successful.")
-
-	return client
+	return rdb
 }
 
 func GetUserTodos(ctx context.Context, userID interface{}) ([]api.Todo, error) {

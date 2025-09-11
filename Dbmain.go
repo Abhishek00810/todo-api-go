@@ -67,6 +67,7 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 	newUserID, err := store.CreateUser(ctx, creds.Username, string(hashPassword))
 	if err != nil {
 		// This could be a real DB error, or a "username already exists" error
+		log.Printf("Error creating user: %v", err)
 		http.Error(w, "Failed to create user", http.StatusInternalServerError)
 		return
 	}
